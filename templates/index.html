@@ -3,14 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <title>Emotion Detection</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="container">
+    <div id="error-message" style="display:none;" class="alert alert-danger"></div>
+    <div class="container" id="app">
         <h1>Real-Time Emotion Detection</h1>
         <div class="video-feed">
             <img src="{{ url_for('video') }}" alt="Camera Feed">
         </div>
     </div>
+    <script>
+        window.onerror = function(msg, url, line) {
+            document.getElementById('error-message').style.display = 'block';
+            document.getElementById('error-message').innerText = `Error: ${msg}`;
+            return false;
+        };
+    </script>
 </body>
 </html>
