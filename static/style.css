@@ -1,0 +1,26 @@
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #121212;
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+.container {
+    text-align: center;
+}
+
+h1 {
+    color: #00e676;
+    margin-bottom: 20px;
+}
+
+.video-feed img {
+    border: 5px solid #00e676;
+    border-radius: 10px;
+    max-width: 100%;
+    height: auto;
+}
