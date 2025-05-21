@@ -5,7 +5,7 @@ from torchvision import models
 from PIL import Image
 import os
 
-z# Page config
+# Page config
 st.set_page_config(
     page_title="Emotion Detection",
     page_icon="😊",
@@ -23,7 +23,14 @@ if 'device' not in st.session_state:
 @st.cache_resource(show_spinner=True)
 def load_model():
     try:
-        device = torch.device("cpu")  # Force CPU for deployment
+        # Safely handle device selection
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+            
         model = models.resnet18()
         model.fc = torch.nn.Linear(model.fc.in_features, 7)
         
