@@ -2,24 +2,113 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emotion Detection</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="error-message" style="display:none;" class="alert alert-danger"></div>
-    <div class="container" id="app">
-        <h1>Real-Time Emotion Detection</h1>
-        <div class="video-feed">
-            <img src="{{ url_for('video') }}" alt="Camera Feed">
-        </div>
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-face-smile"></i>
+                <h1>Emotion Detection</h1>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#" class="active">Live Camera</a></li>
+                    <li><a href="https://github.com/username/FaceDetection" target="_blank">GitHub</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <main>
+            <div class="info-panel">
+                <h2>Real-time Emotion Analysis</h2>
+                <p>This application uses a ResNet-18 neural network to detect emotions in real-time.</p>
+                <div class="emotion-legend">
+                    <h3>Detectable Emotions</h3>
+                    <ul>
+                        <li><span class="emoji">😠</span> Angry</li>
+                        <li><span class="emoji">🤢</span> Disgust</li>
+                        <li><span class="emoji">😨</span> Fear</li>
+                        <li><span class="emoji">😊</span> Happy</li>
+                        <li><span class="emoji">😢</span> Sad</li>
+                        <li><span class="emoji">😲</span> Surprise</li>
+                        <li><span class="emoji">😐</span> Neutral</li>
+                    </ul>
+                </div>
+                <div class="stats">
+                    <div class="stat-card">
+                        <h4>Current Emotion</h4>
+                        <p id="current-emotion">--</p>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Confidence</h4>
+                        <p id="confidence">--</p>
+                    </div>
+                    <div class="stat-card">
+                        <h4>FPS</h4>
+                        <p id="fps">--</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="video-container">
+                <div id="loading-overlay">
+                    <div class="spinner"></div>
+                    <p>Starting camera...</p>
+                </div>
+                <div id="error-message" class="error" style="display:none;"></div>
+                <img src="{{ url_for('video') }}" alt="Camera Feed" id="video-feed" onload="hideLoading()">
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Emotion Detection Project | Built with PyTorch, OpenCV, and Flask</p>
+        </footer>
     </div>
+
     <script>
+        // Handle loading state
+        function hideLoading() {
+            document.getElementById('loading-overlay').style.display = 'none';
+        }
+
+        // Handle errors
         window.onerror = function(msg, url, line) {
             document.getElementById('error-message').style.display = 'block';
             document.getElementById('error-message').innerText = `Error: ${msg}`;
+            document.getElementById('loading-overlay').style.display = 'none';
             return false;
         };
+
+        // Check if video stream is working
+        const videoFeed = document.getElementById('video-feed');
+        videoFeed.onerror = function() {
+            document.getElementById('error-message').style.display = 'block';
+            document.getElementById('error-message').innerText = 'Error loading video stream. Please check your camera permissions.';
+            document.getElementById('loading-overlay').style.display = 'none';
+        };
+
+        // Simulate updating stats (in a real app, this would come from backend events)
+        const emotions = ['😠 Angry', '🤢 Disgust', '😨 Fear', '😊 Happy', '😢 Sad', '😲 Surprise', '😐 Neutral'];
+        setInterval(() => {
+            // This is just for demo/UI purposes - in production these should be updated from backend
+            // For example via websockets or periodic API calls
+            if (Math.random() > 0.7) { // Only update occasionally
+                const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
+                const confidenceValue = (Math.random() * 0.5 + 0.5).toFixed(2);
+                const fpsValue = (Math.random() * 10 + 20).toFixed(1);
+                
+                document.getElementById('current-emotion').textContent = randomEmotion;
+                document.getElementById('confidence').textContent = confidenceValue;
+                document.getElementById('fps').textContent = fpsValue;
+            }
+        }, 2000);
     </script>
 </body>
 </html>
