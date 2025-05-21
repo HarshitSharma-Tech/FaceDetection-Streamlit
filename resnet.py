@@ -8,7 +8,6 @@ import numpy as np
 import os
 import argparse
 import logging
-import mediapipe as mp
 import time
 from contextlib import contextmanager
 
@@ -42,13 +41,8 @@ class EmotionDetector:
         # Load model
         self.model = self._load_model(model_path or 'resnet18_model.pth')
         
-        # Set up MediaPipe face detection
-        self.mp_face_detection = mp.solutions.face_detection
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.face_detection = self.mp_face_detection.FaceDetection(
-            model_selection=1,  # 0 for close range, 1 for far range
-            min_detection_confidence=0.5
-        )
+        # Set up OpenCV face detection
+        self.face_detector, self.detector_type = self._init_face_detector()
         
         # Prepare image transform
         self.transform = transforms.Compose([
@@ -83,27 +77,78 @@ class EmotionDetector:
             logger.error(f"Error loading model: {str(e)}")
             raise
     
+    def _init_face_detector(self):
+        """Initialize the face detector (OpenCV)"""
+        # Check if DNN model exists, otherwise use Haar cascades
+        model_file = os.path.join(os.path.dirname(__file__), "opencv_face_detector_uint8.pb")
+        config_file = os.path.join(os.path.dirname(__file__), "opencv_face_detector.pbtxt")
+        
+        if os.path.exists(model_file) and os.path.exists(config_file):
+            logger.info("Using OpenCV DNN face detector")
+            face_detector = cv2.dnn.readNetFromTensorflow(model_file, config_file)
+            detector_type = "dnn"
+        else:
+            logger.info("Using Haar Cascade face detector")
+            model_file = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            face_detector = cv2.CascadeClassifier(model_file)
+            detector_type = "haar"
+            
+        return face_detector, detector_type
+    
+    def detect_faces(self, frame, min_confidence=0.5):
+        """
+        Detect faces in a frame using either Haar Cascades or DNN detector
+        Returns list of face rectangles as (x, y, w, h)
+        """
+        if self.detector_type == "haar":
+            # Convert to grayscale for Haar Cascade
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = self.face_detector.detectMultiScale(
+                gray, 
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(30, 30)
+            )
+            return faces
+        else:
+            # Use DNN detector
+            height, width = frame.shape[:2]
+            blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), [104, 117, 123], False, False)
+            self.face_detector.setInput(blob)
+            detections = self.face_detector.forward()
+            
+            faces = []
+            for i in range(detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                if confidence > min_confidence:
+                    x1 = int(detections[0, 0, i, 3] * width)
+                    y1 = int(detections[0, 0, i, 4] * height)
+                    x2 = int(detections[0, 0, i, 5] * width)
+                    y2 = int(detections[0, 0, i, 6] * height)
+                    
+                    # Convert to x, y, w, h format
+                    x = max(0, x1)
+                    y = max(0, y1)
+                    w = max(0, x2 - x1)
+                    h = max(0, y2 - y1)
+                    
+                    faces.append((x, y, w, h))
+            
+            return faces
+    
     def detect_emotion(self, frame):
         """Detect faces and emotions in a frame."""
         if frame is None or frame.size == 0:
             logger.warning("Empty frame received")
             return frame
             
-        # Convert to RGB for MediaPipe
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Detect faces
+        faces = self.detect_faces(frame)
         frame_height, frame_width, _ = frame.shape
             
-        # Detect faces
-        results = self.face_detection.process(rgb_frame)
-        
         # Process detected faces
-        if results.detections:
-            for detection in results.detections:
-                # Extract face bounding box
-                bbox = detection.location_data.relative_bounding_box
-                x, y, w, h = int(bbox.xmin * frame_width), int(bbox.ymin * frame_height), \
-                            int(bbox.width * frame_width), int(bbox.height * frame_height)
-                
+        if faces is not None and len(faces) > 0:
+            for (x, y, w, h) in faces:
                 # Ensure bbox is within frame boundaries
                 x, y = max(0, x), max(0, y)
                 w = min(w, frame_width - x)
@@ -135,6 +180,7 @@ class EmotionDetector:
             # If no faces detected, analyze entire frame
             try:
                 # Convert to PIL and apply transform
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img_pil = Image.fromarray(rgb_frame)
                 input_tensor = self.transform(img_pil).unsqueeze(0).to(self.device)
                 

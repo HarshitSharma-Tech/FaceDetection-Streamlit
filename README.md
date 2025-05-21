@@ -1,6 +1,6 @@
 # Emotion Detection
 
-A real-time emotion detection application built with PyTorch, MediaPipe, and Streamlit/Flask.
+A real-time emotion detection application built with PyTorch, OpenCV, and Streamlit/Flask.
 
 ![Emotion Detection Demo](https://github.com/username/FaceDetection/raw/main/static/demo.gif)
 
@@ -8,7 +8,7 @@ A real-time emotion detection application built with PyTorch, MediaPipe, and Str
 
 - **Real-time emotion detection** via webcam
 - **Image upload** for static analysis
-- **Face detection** using MediaPipe (more accurate than Haar Cascades)
+- **Face detection** using OpenCV DNN/Haar Cascades (compatible with Streamlit Cloud)
 - **Confidence scores** for each emotion prediction
 - **Performance metrics** (FPS, processing time)
 - **Responsive UI** with both Streamlit and Flask interfaces
@@ -98,9 +98,16 @@ The emotion detection uses a fine-tuned ResNet18 model pre-trained on ImageNet a
 
 ## Performance Optimization
 
-- Facial detection using MediaPipe
+- Facial detection using OpenCV's DNN or Haar Cascades
 - Model inference optimization with PyTorch
 - Processing only detected face regions
+
+## Compatibility
+
+This application is designed to be compatible with:
+- Streamlit Cloud deployment
+- Local development environments
+- Various Python versions (3.9+)
 
 ## License
 
@@ -110,4 +117,4 @@ MIT
 
 - PyTorch team for the deep learning framework
 - Streamlit for the web app framework
-- MediaPipe team for the face detection model
+- OpenCV team for computer vision functionalities

@@ -9,7 +9,6 @@ import av
 import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, ClientSettings
 import logging
-import mediapipe as mp
 from typing import Optional, Tuple
 import time
 
@@ -75,15 +74,67 @@ def get_transform():
         )
     ])
 
-# Cache the MediaPipe face detector
+# Cache the Face Detector
 @st.cache_resource
 def get_face_detector():
-    mp_face_detection = mp.solutions.face_detection
-    face_detection = mp_face_detection.FaceDetection(
-        model_selection=1,  # 0 for close range, 1 for far range
-        min_detection_confidence=0.5
-    )
-    return face_detection
+    # Use OpenCV's DNN face detector - works well and is compatible with Streamlit Cloud
+    model_file = "opencv_face_detector_uint8.pb"
+    config_file = "opencv_face_detector.pbtxt"
+    
+    # Check if model exists in local directory, otherwise use default
+    if not os.path.exists(model_file):
+        # Use a default model path or download
+        model_file = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        face_detector = cv2.CascadeClassifier(model_file)
+        detector_type = "haar"
+    else:
+        # Use DNN detector
+        face_detector = cv2.dnn.readNetFromTensorflow(model_file, config_file)
+        detector_type = "dnn"
+    
+    return face_detector, detector_type
+
+# Detect faces in image
+def detect_faces(image, face_detector, detector_type):
+    """
+    Detect faces in an image using either Haar Cascades or DNN detector
+    Returns list of face rectangles as (x, y, w, h)
+    """
+    if detector_type == "haar":
+        # Convert to grayscale for Haar Cascade
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        faces = face_detector.detectMultiScale(
+            gray, 
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30, 30)
+        )
+        return faces
+    else:
+        # Use DNN detector
+        height, width = image.shape[:2]
+        blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
+        face_detector.setInput(blob)
+        detections = face_detector.forward()
+        
+        faces = []
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > 0.5:  # Confidence threshold
+                x1 = int(detections[0, 0, i, 3] * width)
+                y1 = int(detections[0, 0, i, 4] * height)
+                x2 = int(detections[0, 0, i, 5] * width)
+                y2 = int(detections[0, 0, i, 6] * height)
+                
+                # Convert to x, y, w, h format
+                x = max(0, x1)
+                y = max(0, y1)
+                w = max(0, x2 - x1)
+                h = max(0, y2 - y1)
+                
+                faces.append((x, y, w, h))
+        
+        return faces
 
 # Cache the model loading
 @st.cache_resource
@@ -132,7 +183,8 @@ class VideoProcessor(VideoProcessorBase):
         self.model = st.session_state["model"]
         self.transform = st.session_state["transform"]
         self.device = st.session_state["device"]
-        self.face_detection = st.session_state["face_detection"]
+        self.face_detector = st.session_state["face_detector"]
+        self.detector_type = st.session_state["detector_type"]
         self.frame_count = 0
         self.start_time = time.time()
         self.fps = 0
@@ -158,7 +210,7 @@ class VideoProcessor(VideoProcessorBase):
                 self.start_time = time.time()
             
             # Run face detection
-            results = self.face_detection.process(rgb_frame)
+            faces = detect_faces(rgb_frame, self.face_detector, self.detector_type)
             
             # Add background metrics info
             cv2.putText(
@@ -167,14 +219,9 @@ class VideoProcessor(VideoProcessorBase):
             )
             
             # If faces detected
-            faces_found = False
-            if results.detections:
-                for detection in results.detections:
-                    # Extract face bounding box
-                    bbox = detection.location_data.relative_bounding_box
-                    x, y, w, h = int(bbox.xmin * frame_w), int(bbox.ymin * frame_h), \
-                                int(bbox.width * frame_w), int(bbox.height * frame_h)
-                    
+            faces_found = len(faces) > 0
+            if faces_found:
+                for (x, y, w, h) in faces:
                     # Ensure bbox is within frame boundaries
                     x, y = max(0, x), max(0, y)
                     w = min(w, frame_w - x)
@@ -202,7 +249,6 @@ class VideoProcessor(VideoProcessorBase):
                             img, text, (x, y-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
                         )
-                        faces_found = True
             
             # If no faces found, process whole frame
             if not faces_found:
@@ -246,21 +292,19 @@ def process_image(image: Image.Image) -> Tuple[Optional[str], Optional[float], O
         img_array = np.array(image)
         
         # Detect faces
-        face_detection = st.session_state["face_detection"]
-        results = face_detection.process(img_array)
+        face_detector = st.session_state["face_detector"]
+        detector_type = st.session_state["detector_type"]
+        faces = detect_faces(img_array, face_detector, detector_type)
         
         # Create a copy for drawing
         output_image = img_array.copy()
         
-        if results.detections:
+        if len(faces) > 0:
             # Process first detected face
-            detection = results.detections[0]  # Take first face
-            bbox = detection.location_data.relative_bounding_box
-            h, w, _ = img_array.shape
-            x, y, width, height = int(bbox.xmin * w), int(bbox.ymin * h), \
-                                int(bbox.width * w), int(bbox.height * h)
+            x, y, width, height = faces[0]  # Take first face
             
             # Ensure bbox is within image boundaries
+            h, w, _ = img_array.shape
             x, y = max(0, x), max(0, y)
             width = min(width, w - x)
             height = min(height, h - y)
@@ -336,14 +380,9 @@ def about_section():
         step=0.1
     )
     
-    # Update face detector if confidence changed
+    # Store the confidence value in session state
     if "detection_confidence" not in st.session_state or st.session_state["detection_confidence"] != detection_confidence:
         st.session_state["detection_confidence"] = detection_confidence
-        mp_face_detection = mp.solutions.face_detection
-        st.session_state["face_detection"] = mp_face_detection.FaceDetection(
-            model_selection=1,
-            min_detection_confidence=detection_confidence
-        )
 
 def main():
     # Setup page
@@ -364,11 +403,15 @@ def main():
                 st.error("Failed to load emotion detection model!")
                 return
             
+            # Initialize face detector
+            face_detector, detector_type = get_face_detector()
+            
             # Initialize session state
             st.session_state["model"] = model
             st.session_state["device"] = device
             st.session_state["transform"] = get_transform()
-            st.session_state["face_detection"] = get_face_detector()
+            st.session_state["face_detector"] = face_detector
+            st.session_state["detector_type"] = detector_type
             st.session_state["detection_confidence"] = 0.5
     
     # Mode selection tabs

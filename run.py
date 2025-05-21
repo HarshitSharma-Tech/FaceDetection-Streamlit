@@ -6,7 +6,6 @@ from torchvision import models
 import numpy as np
 import os
 import logging
-import mediapipe as mp
 
 # Configure logging
 logging.basicConfig(
@@ -56,13 +55,68 @@ def load_emotion_model():
 # Load models at startup
 model, device = load_emotion_model()
 
-# Initialize MediaPipe Face Detection - more robust than Haar Cascades
-mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
-face_detection = mp_face_detection.FaceDetection(
-    model_selection=1,  # 0 for close range, 1 for far range
-    min_detection_confidence=0.5
-)
+# Initialize OpenCV Face Detection
+def get_face_detector():
+    # Check if DNN model exists, otherwise use Haar cascades
+    model_file = os.path.join(os.path.dirname(__file__), "opencv_face_detector_uint8.pb")
+    config_file = os.path.join(os.path.dirname(__file__), "opencv_face_detector.pbtxt")
+    
+    if os.path.exists(model_file) and os.path.exists(config_file):
+        logger.info("Using OpenCV DNN face detector")
+        face_detector = cv2.dnn.readNetFromTensorflow(model_file, config_file)
+        detector_type = "dnn"
+    else:
+        logger.info("Using Haar Cascade face detector")
+        model_file = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        face_detector = cv2.CascadeClassifier(model_file)
+        detector_type = "haar"
+        
+    return face_detector, detector_type
+
+# Get the face detector
+face_detector, detector_type = get_face_detector()
+
+# Detect faces in image
+def detect_faces(image, min_confidence=0.5):
+    """
+    Detect faces in an image using either Haar Cascades or DNN detector
+    Returns list of face rectangles as (x, y, w, h)
+    """
+    if detector_type == "haar":
+        # Convert to grayscale for Haar Cascade
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = face_detector.detectMultiScale(
+            gray, 
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30, 30)
+        )
+        return faces
+    else:
+        # Use DNN detector
+        height, width = image.shape[:2]
+        blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
+        face_detector.setInput(blob)
+        detections = face_detector.forward()
+        
+        faces = []
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > min_confidence:
+                x1 = int(detections[0, 0, i, 3] * width)
+                y1 = int(detections[0, 0, i, 4] * height)
+                x2 = int(detections[0, 0, i, 5] * width)
+                y2 = int(detections[0, 0, i, 6] * height)
+                
+                # Convert to x, y, w, h format
+                x = max(0, x1)
+                y = max(0, y1)
+                w = max(0, x2 - x1)
+                h = max(0, y2 - y1)
+                
+                faces.append((x, y, w, h))
+        
+        return faces
 
 # Image transform - modern PyTorch practice
 transform = transforms.Compose([
@@ -107,22 +161,14 @@ def gen_frames():
                 break
 
             try:
-                # Convert to RGB for MediaPipe
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Face detection with MediaPipe
-                results = face_detection.process(rgb_frame)
+                # Detect faces
+                faces = detect_faces(frame)
                 
                 # If faces detected
-                if results.detections:
-                    for detection in results.detections:
-                        # Extract face bounding box
-                        bbox = detection.location_data.relative_bounding_box
-                        ih, iw, _ = frame.shape
-                        x, y, w, h = int(bbox.xmin * iw), int(bbox.ymin * ih), \
-                                    int(bbox.width * iw), int(bbox.height * ih)
-                        
+                if len(faces) > 0:
+                    for (x, y, w, h) in faces:
                         # Ensure bbox is within frame boundaries
+                        ih, iw, _ = frame.shape
                         x, y = max(0, x), max(0, y)
                         w = min(w, iw - x)
                         h = min(h, ih - y)
@@ -150,7 +196,7 @@ def gen_frames():
                                       cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
                 
                 # If no faces detected, still process the whole frame
-                if not results.detections:
+                if len(faces) == 0:
                     # Process the entire image
                     img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     input_tensor = transform(img_rgb).unsqueeze(0).to(device)
