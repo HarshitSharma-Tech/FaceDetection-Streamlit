@@ -48,23 +48,20 @@ def load_model():
         # Check if fine-tuned model exists
         if os.path.exists('resnet50_model.pth'):
             model.load_state_dict(torch.load('resnet50_model.pth', map_location=device))
-        else:
-            st.warning("Fine-tuned weights not found. Using pretrained ImageNet weights.")
-            
+        
         model = model.to(device)
         model.eval()
         return model, device
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
-        return None, None
+        return None, torch.device("cpu")  # Return CPU device as fallback
 
 # Video processor for live capture
 class EmotionVideoProcessor(VideoProcessorBase):
-    def __init__(self):
-        # Get model and device from session state
-        self.model = st.session_state.model
-        self.device = st.session_state.device
-        self.transform = st.session_state.transform
+    def __init__(self, model, device, transform):
+        self.model = model
+        self.device = device
+        self.transform = transform
         self.labels = ['Angry 😠', 'Disgust 🤢', 'Fear 😨', 'Happy 😊', 
                       'Sad 😢', 'Surprise 😲', 'Neutral 😐']
 
@@ -136,11 +133,18 @@ def main():
                 st.error(f"Error processing image: {str(e)}")
     else:
         st.write("Live video capture mode enabled. Please allow camera access.")
-        webrtc_streamer(
-            key="emotion-detection",
-            video_processor_factory=EmotionVideoProcessor,
-            media_stream_constraints={"video": True, "audio": False}
-        )
+        if st.session_state.model_loaded:
+            webrtc_streamer(
+                key="emotion-detection",
+                video_processor_factory=lambda: EmotionVideoProcessor(
+                    model=st.session_state.model,
+                    device=st.session_state.device,
+                    transform=st.session_state.transform
+                ),
+                media_stream_constraints={"video": True, "audio": False}
+            )
+        else:
+            st.error("Model not loaded yet. Please wait.")
 
 if __name__ == '__main__':
     main()
