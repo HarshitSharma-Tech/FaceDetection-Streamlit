@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 # Define the class labels in the same order as your training data
-class_labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprise']  # update if needed
+class_labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']  # updated to match other files
 
 # Load trained model
 if torch.backends.mps.is_available():
@@ -17,16 +17,16 @@ elif torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     device = torch.device("cpu")
-# Use a more powerful model backbone (ResNet50 with pretrained weights)
-model = models.resnet50(pretrained=True)
+# Use ResNet18 model (to match the available weights file)
+model = models.resnet18(weights='IMAGENET1K_V1')
 num_ftrs = model.fc.in_features
 model.fc = nn.Linear(num_ftrs, 7)
 
 # If you have fine-tuned weights, load them; otherwise, you might need to fine-tune on your dataset.
-if os.path.exists('resnet50_model.pth'):
-    model.load_state_dict(torch.load('resnet50_model.pth', map_location=device))
+if os.path.exists('resnet18_model.pth'):
+    model.load_state_dict(torch.load('resnet18_model.pth', map_location=device))
 else:
-    print("Warning: Fine-tuned weights for ResNet50 not found. Using ImageNet pretrained weights.")
+    print("Warning: Fine-tuned weights for ResNet18 not found. Using ImageNet pretrained weights.")
 
 model = model.to(device)
 model.eval()

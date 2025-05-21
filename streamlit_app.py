@@ -46,12 +46,12 @@ def get_transform():
 def load_model() -> tuple[Optional[torch.nn.Module], torch.device]:
     try:
         device = torch.device("cpu")  # Force CPU for consistency
-        model = models.resnet50(weights='IMAGENET1K_V2')
+        model = models.resnet18(weights='IMAGENET1K_V1')
         model.fc = torch.nn.Linear(model.fc.in_features, len(EMOTIONS))
         
-        if os.path.exists('resnet50_model.pth'):
+        if os.path.exists('resnet18_model.pth'):
             model.load_state_dict(
-                torch.load('resnet50_model.pth', map_location=device)
+                torch.load('resnet18_model.pth', map_location=device)
             )
         
         model.to(device)
